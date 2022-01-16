@@ -3,56 +3,56 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text.RegularExpressions;
-using OpenTabletDriver.Devices;
 using OpenTabletDriver.Interop;
 using OpenTabletDriver.Plugin;
+using OpenTabletDriver.Plugin.Components;
 using OpenTabletDriver.Plugin.Devices;
 using OpenTabletDriver.Plugin.Tablet;
-using OpenTabletDriver.Tablet;
+
+#nullable enable
 
 namespace OpenTabletDriver
 {
-    public abstract class Driver : IDriver, IDisposable
+    public class Driver : IDriver, IDisposable
     {
-        public event EventHandler<IEnumerable<TabletReference>> TabletsChanged;
-
-        private static readonly Dictionary<string, Func<IReportParser<IDeviceReport>>> reportParserDict = new Dictionary<string, Func<IReportParser<IDeviceReport>>>
+        public Driver(ICompositeDeviceHub deviceHub, IReportParserProvider reportParserProvider, IDeviceConfigurationProvider configurationProvider)
         {
-            { typeof(DeviceReportParser).FullName, () => new DeviceReportParser() },
-            { typeof(TabletReportParser).FullName, () => new TabletReportParser() },
-            { typeof(AuxReportParser).FullName, () => new AuxReportParser() },
-            { typeof(TiltTabletReportParser).FullName, () => new TiltTabletReportParser() },
-            { typeof(Vendors.SkipByteTabletReportParser).FullName, () => new Vendors.SkipByteTabletReportParser() },
-            { typeof(Vendors.UCLogic.UCLogicReportParser).FullName, () => new Vendors.UCLogic.UCLogicReportParser() },
-            { typeof(Vendors.Huion.GianoReportParser).FullName, () => new Vendors.Huion.GianoReportParser() },
-            { typeof(Vendors.Wacom.BambooReportParser).FullName, () => new Vendors.Wacom.BambooReportParser() },
-            { typeof(Vendors.Wacom.IntuosV2ReportParser).FullName, () => new Vendors.Wacom.IntuosV2ReportParser() },
-            { typeof(Vendors.Wacom.IntuosV3ReportParser).FullName, () => new Vendors.Wacom.IntuosV3ReportParser() },
-            { typeof(Vendors.Wacom.Wacom64bAuxReportParser).FullName, () => new Vendors.Wacom.Wacom64bAuxReportParser() },
-            { typeof(Vendors.Wacom.WacomDriverIntuosV2ReportParser).FullName, () => new Vendors.Wacom.WacomDriverIntuosV2ReportParser() },
-            { typeof(Vendors.Wacom.WacomDriverIntuosV3ReportParser).FullName, () => new Vendors.Wacom.WacomDriverIntuosV3ReportParser() },
-            { typeof(Vendors.XP_Pen.XP_PenReportParser).FullName, () => new Vendors.XP_Pen.XP_PenReportParser() },
-            { typeof(Vendors.XP_Pen.XP_PenTiltReportParser).FullName, () => new Vendors.XP_Pen.XP_PenTiltReportParser() }
-        };
+            CompositeDeviceHub = deviceHub;
+            _reportParserProvider = reportParserProvider;
+            _deviceConfigurationProvider = configurationProvider;
+        }
 
-        public IEnumerable<TabletReference> Tablets => Devices.Select(c => c.CreateReference());
-        public IList<InputDeviceTree> Devices { private set; get; } = new List<InputDeviceTree>();
+        private readonly IReportParserProvider _reportParserProvider;
+        private readonly IDeviceConfigurationProvider _deviceConfigurationProvider;
+
+        public event EventHandler<IEnumerable<TabletReference>>? TabletsChanged;
+
+        public ICompositeDeviceHub CompositeDeviceHub { get; }
+        public InputDeviceTreeList InputDevices { get; } = new();
+        public IEnumerable<TabletReference> Tablets => InputDevices.Select(c => c.CreateReference());
+
+        public IReportParser<IDeviceReport> GetReportParser(DeviceIdentifier identifier)
+        {
+            return _reportParserProvider.GetReportParser(identifier.ReportParser);
+        }
 
         public virtual bool Detect()
         {
             bool success = false;
 
-            Devices.Clear();
-            foreach (var config in GetTabletConfigurations())
+            Log.Write("Detect", "Searching for tablets...");
+
+            InputDevices.Clear();
+            foreach (var config in _deviceConfigurationProvider.TabletConfigurations)
             {
                 if (Match(config) is InputDeviceTree tree)
                 {
                     success = true;
-                    Devices.Add(tree);
+                    InputDevices.Add(tree);
 
                     tree.Disconnected += (sender, e) =>
                     {
-                        Devices.Remove(tree);
+                        InputDevices.Remove(tree);
                         TabletsChanged?.Invoke(this, Tablets);
                     };
                 }
@@ -60,19 +60,17 @@ namespace OpenTabletDriver
 
             TabletsChanged?.Invoke(this, Tablets);
 
+            if (!success)
+            {
+                Log.Write("Detect", "No tablets were detected.");
+            }
+
             return success;
         }
 
-        public virtual IReportParser<IDeviceReport> GetReportParser(DeviceIdentifier identifier)
+        protected virtual InputDeviceTree? Match(TabletConfiguration config)
         {
-            return reportParserDict[identifier.ReportParser].Invoke();
-        }
-
-        protected abstract IEnumerable<TabletConfiguration> GetTabletConfigurations();
-
-        protected virtual InputDeviceTree Match(TabletConfiguration config)
-        {
-            Log.Write("Detect", $"Searching for tablet '{config.Name}'");
+            Log.Debug("Detect", $"Searching for tablet '{config.Name}'");
             try
             {
                 var devices = new List<InputDevice>();
@@ -98,7 +96,7 @@ namespace OpenTabletDriver
                 Log.Write(
                     "Driver",
                     "The current user does not have the permissions to open the device stream. " +
-                    "Follow the instructions from https://github.com/OpenTabletDriver/OpenTabletDriver/wiki/Linux-FAQ#the-driver-fails-to-open-the-tablet-deviceioexception to resolve this issue.",
+                    "Follow the instructions from https://opentabletdriver.net/Wiki/FAQ/Linux#fail-device-streams to resolve this issue.",
                     LogLevel.Error
                 );
             }
@@ -108,7 +106,7 @@ namespace OpenTabletDriver
                 Log.Write(
                     "Driver",
                     "Device is currently in use by another kernel module. " +
-                    "Follow the instructions from https://github.com/OpenTabletDriver/OpenTabletDriver/wiki/Linux-FAQ#argumentoutofrangeexception-value-0-15 to resolve this issue.",
+                    "Follow the instructions from https://opentabletdriver.net/Wiki/FAQ/Linux#argumentoutofrangeexception to resolve this issue.",
                     LogLevel.Error
                 );
             }
@@ -119,7 +117,7 @@ namespace OpenTabletDriver
             return null;
         }
 
-        private InputDevice MatchDevice(TabletConfiguration config, IList<DeviceIdentifier> identifiers)
+        private InputDevice? MatchDevice(TabletConfiguration config, IList<DeviceIdentifier> identifiers)
         {
             foreach (var identifier in identifiers)
             {
@@ -146,15 +144,15 @@ namespace OpenTabletDriver
 
         private IEnumerable<IDeviceEndpoint> GetMatchingDevices(TabletConfiguration configuration, DeviceIdentifier identifier)
         {
-            return from device in HidSharpDeviceRootHub.Current.GetDevices()
-                where identifier.VendorID == device.VendorID
-                where identifier.ProductID == device.ProductID
-                where device.CanOpen
-                where identifier.InputReportLength == null || identifier.InputReportLength == device.InputReportLength
-                where identifier.OutputReportLength == null || identifier.OutputReportLength == device.OutputReportLength
-                where DeviceMatchesStrings(device, identifier.DeviceStrings)
-                where DeviceMatchesAttribute(device, configuration.Attributes)
-                select device;
+            return from device in CompositeDeviceHub.GetDevices()
+                   where identifier.VendorID == device.VendorID
+                   where identifier.ProductID == device.ProductID
+                   where device.CanOpen
+                   where identifier.InputReportLength == null || identifier.InputReportLength == device.InputReportLength
+                   where identifier.OutputReportLength == null || identifier.OutputReportLength == device.OutputReportLength
+                   where DeviceMatchesStrings(device, identifier.DeviceStrings)
+                   where DeviceMatchesAttribute(device, configuration.Attributes)
+                   select device;
         }
 
         private bool DeviceMatchesStrings(IDeviceEndpoint device, IDictionary<byte, string> deviceStrings)
@@ -194,6 +192,12 @@ namespace OpenTabletDriver
 
                     return interfaceMatches && keyMatches;
                 }
+                case PluginPlatform.MacOS:
+                {
+                    var devName = device.DevicePath;
+                    bool interfaceMatches = attributes.ContainsKey("MacInterface") ? Regex.IsMatch(devName, $"IOUSBHostInterface@{attributes["MacInterface"]}") : true;
+                    return interfaceMatches;
+                }
                 default:
                 {
                     return true;
@@ -203,11 +207,9 @@ namespace OpenTabletDriver
 
         public void Dispose()
         {
-            foreach (InputDeviceTree tree in Devices)
-                foreach (InputDevice dev in tree.InputDevices)
+            foreach (InputDeviceTree tree in InputDevices.ToList())
+                foreach (InputDevice dev in tree.InputDevices.ToList())
                     dev.Dispose();
-
-            Devices = null;
         }
     }
 }

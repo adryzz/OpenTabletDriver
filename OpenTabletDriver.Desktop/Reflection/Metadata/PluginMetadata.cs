@@ -68,7 +68,7 @@ namespace OpenTabletDriver.Desktop.Reflection.Metadata
 
         public static string GetSHA256(Stream stream)
         {
-            using (var sha256 = SHA256Managed.Create())
+            using (var sha256 = System.Security.Cryptography.SHA256.Create())
             {
                 var hashData = sha256.ComputeHash(stream);
                 stream.Position = 0;
@@ -108,6 +108,23 @@ namespace OpenTabletDriver.Desktop.Reflection.Metadata
                     throw new CryptographicException("The SHA256 cryptographic hashes of the downloaded content and the metadata do not match.");
                 }
             }
+        }
+
+        public bool IsSupportedBy(Version appVersion)
+        {
+            // Always return false when major and minor is not equal (x.y.0.0).
+            if (SupportedDriverVersion.Major != appVersion.Major)
+                return false;
+            if (SupportedDriverVersion.Minor != appVersion.Minor)
+                return false;
+
+            // Always return false when driver's version is older than plugin's declared support version (0.0.x.0).
+            // We do this because the driver will bump build version when a non-breaking feature is introduced.
+            // Newer plugins may start using these new features not available in older drivers.
+            if (SupportedDriverVersion.Build > appVersion.Build)
+                return false;
+
+            return true;
         }
 
         public static bool Match(PluginMetadata primary, PluginMetadata secondary)

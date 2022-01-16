@@ -6,9 +6,9 @@ using System.Linq;
 using System.Threading.Tasks;
 using Eto.Drawing;
 using Eto.Forms;
-using HidSharp;
 using OpenTabletDriver.Desktop;
 using OpenTabletDriver.Plugin;
+using OpenTabletDriver.Plugin.Devices;
 using OpenTabletDriver.Plugin.Tablet;
 using OpenTabletDriver.UX.Controls.Generic;
 using OpenTabletDriver.UX.Controls.Generic.Dictionary;
@@ -20,7 +20,7 @@ namespace OpenTabletDriver.UX.Windows.Configurations
     public class ConfigurationEditor : DesktopForm
     {
         public ConfigurationEditor()
-            : base()
+            : base(Application.Instance.MainForm)
         {
             base.Title = "Configuration Editor";
             base.ClientSize = new Size(910, 680);
@@ -98,8 +98,8 @@ namespace OpenTabletDriver.UX.Windows.Configurations
         {
             var configDir = new DirectoryInfo(AppInfo.Current.ConfigurationDirectory);
             var sortedConfigs = from config in ReadConfigurations(configDir)
-                orderby config.Name
-                select config;
+                                orderby config.Name
+                                select config;
 
             Configurations = new ObservableCollection<TabletConfiguration>(sortedConfigs);
             SelectedIndex = 0;
@@ -134,7 +134,7 @@ namespace OpenTabletDriver.UX.Windows.Configurations
             if (dir.Exists)
             {
                 var configs = from file in dir.GetFiles("*.json", SearchOption.AllDirectories)
-                    select Serialization.Deserialize<TabletConfiguration>(file);
+                              select Serialization.Deserialize<TabletConfiguration>(file);
                 return new ObservableCollection<TabletConfiguration>(configs);
             }
             else
@@ -153,9 +153,16 @@ namespace OpenTabletDriver.UX.Windows.Configurations
 
                 var path = Path.Join(dir.FullName, manufacturer, string.Format("{0}.json", tabletName));
                 var file = new FileInfo(path);
-                if (!file.Directory.Exists)
-                    file.Directory.Create();
-                Serialization.Serialize(file, config);
+                try
+                {
+                    if (!file.Directory.Exists)
+                        file.Directory.Create();
+                    Serialization.Serialize(file, config);
+                }
+                catch (UnauthorizedAccessException)
+                {
+                    Log.Write("Configuration", $"OpenTabletDriver doesn't have permission to save persistent tablet config to {path}.", LogLevel.Error);
+                }
             }
         }
 
@@ -239,21 +246,22 @@ namespace OpenTabletDriver.UX.Windows.Configurations
             public async Task GenerateConfiguration()
             {
                 var dialog = new DeviceListDialog();
-                if (await dialog.ShowModalAsync() is HidDevice device)
+                await dialog.InitializeAsync();
+                if (await dialog.ShowModalAsync(this) is IDeviceEndpoint device)
                 {
                     try
                     {
                         var generatedConfig = new TabletConfiguration
                         {
-                            Name = device.GetManufacturer() + " " + device.GetProductName(),
+                            Name = device.Manufacturer + " " + device.ProductName,
                             DigitizerIdentifiers =
                             {
                                 new DeviceIdentifier
                                 {
                                     VendorID = device.VendorID,
                                     ProductID = device.ProductID,
-                                    InputReportLength = (uint)device.GetMaxInputReportLength(),
-                                    OutputReportLength = (uint)device.GetMaxOutputReportLength()
+                                    InputReportLength = (uint)device.InputReportLength,
+                                    OutputReportLength = (uint)device.OutputReportLength
                                 }
                             }
                         };
@@ -308,7 +316,7 @@ namespace OpenTabletDriver.UX.Windows.Configurations
                 };
 
                 name.TextBinding.Bind(ConfigurationBinding.Child(c => c.Name));
-                specificationEditor.TabletSpecificationsBinding.Bind(ConfigurationBinding.Child(c => c.Specifications));
+                specificationEditor.SpecificationsBinding.Bind(ConfigurationBinding.Child(c => c.Specifications));
                 digitizerIdentifierEditor.ItemSourceBinding.Bind(ConfigurationBinding.Child<IList<DeviceIdentifier>>(c => c.DigitizerIdentifiers));
                 auxiliaryIdentifierEditor.ItemSourceBinding.Bind(ConfigurationBinding.Child<IList<DeviceIdentifier>>(c => c.AuxilaryDeviceIdentifiers));
                 attributeEditor.ItemSourceBinding.Bind(ConfigurationBinding.Child<IDictionary<string, string>>(c => c.Attributes));
@@ -330,11 +338,11 @@ namespace OpenTabletDriver.UX.Windows.Configurations
                 }
                 get => this.configuration;
             }
-            
+
             public event EventHandler<EventArgs> ConfigurationChanged;
-            
+
             protected virtual void OnConfigurationChanged() => ConfigurationChanged?.Invoke(this, new EventArgs());
-            
+
             public BindableBinding<ConfigurationSettings, TabletConfiguration> ConfigurationBinding
             {
                 get

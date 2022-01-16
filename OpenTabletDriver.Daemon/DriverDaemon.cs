@@ -4,37 +4,45 @@ using System.Collections.ObjectModel;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
-using HidSharp;
+using Octokit;
 using OpenTabletDriver.Desktop;
 using OpenTabletDriver.Desktop.Binding;
 using OpenTabletDriver.Desktop.Contracts;
+using OpenTabletDriver.Desktop.Interop;
 using OpenTabletDriver.Desktop.Migration;
-using OpenTabletDriver.Desktop.Output;
 using OpenTabletDriver.Desktop.Profiles;
 using OpenTabletDriver.Desktop.Reflection;
 using OpenTabletDriver.Desktop.Reflection.Metadata;
 using OpenTabletDriver.Desktop.RPC;
-using OpenTabletDriver.Devices;
+using OpenTabletDriver.Desktop.Updater;
+using OpenTabletDriver.Interop;
 using OpenTabletDriver.Plugin;
+using OpenTabletDriver.Plugin.Devices;
 using OpenTabletDriver.Plugin.Logging;
 using OpenTabletDriver.Plugin.Output;
 using OpenTabletDriver.Plugin.Platform.Pointer;
 using OpenTabletDriver.Plugin.Tablet;
+using OpenTabletDriver.SystemDrivers;
+
+#nullable enable
 
 namespace OpenTabletDriver.Daemon
 {
     public class DriverDaemon : IDriverDaemon
     {
-        public DriverDaemon()
+        public DriverDaemon(Driver driver)
         {
+            Driver = driver;
+
             Log.Output += (sender, message) =>
             {
                 LogMessages.Add(message);
                 Console.WriteLine(Log.GetStringFormat(message));
                 Message?.Invoke(sender, message);
             };
+
             Driver.TabletsChanged += (sender, e) => TabletsChanged?.Invoke(sender, e);
-            HidSharpDeviceRootHub.Current.DevicesChanged += async (sender, args) =>
+            Driver.CompositeDeviceHub.DevicesChanged += async (sender, args) =>
             {
                 if (args.Additions.Any())
                 {
@@ -43,61 +51,46 @@ namespace OpenTabletDriver.Daemon
                 }
             };
 
+            foreach (var driverInfo in DriverInfo.GetDriverInfos())
+            {
+                Log.Write("Detect", $"Another tablet driver found: {driverInfo.Name}", LogLevel.Warning);
+                if (driverInfo.IsBlockingDriver)
+                    Log.Write("Detect", $"Detection for {driverInfo.Name} tablets might be impaired", LogLevel.Warning);
+                else if (driverInfo.IsSendingInput)
+                    Log.Write("Detect", $"Detected input coming from {driverInfo.Name} driver", LogLevel.Error);
+            }
+
             LoadUserSettings();
+
+#if !DEBUG
+            SleepDetection = new(async () =>
+            {
+                Log.Write(nameof(SleepDetectionThread), "Sleep detected...", LogLevel.Debug);
+                await DetectTablets();
+            });
+
+            SleepDetection.Start();
+#endif
         }
 
-        private async void LoadUserSettings()
-        {
-            AppInfo.PluginManager.Clean();
-            await LoadPlugins();
-            await DetectTablets();
+        public event EventHandler<LogMessage>? Message;
+        public event EventHandler<DebugReportData>? DeviceReport;
+        public event EventHandler<IEnumerable<TabletReference>>? TabletsChanged;
 
-            var appdataDir = new DirectoryInfo(AppInfo.Current.AppDataDirectory);
-            if (!appdataDir.Exists)
-            {
-                appdataDir.Create();
-                Log.Write("Settings", $"Created OpenTabletDriver application data directory: {appdataDir.FullName}");
-            }
-
-            var settingsFile = new FileInfo(AppInfo.Current.SettingsFile);
-
-            if (settingsFile.Exists)
-            {
-                SettingsMigrator.Migrate(AppInfo.Current);
-                var settings = Settings.Deserialize(settingsFile);
-                if (settings != null)
-                {
-                    await SetSettings(settings);
-                }
-                else
-                {
-                    Log.Write("Settings", "Invalid settings detected. Attempting recovery.", LogLevel.Error);
-                    settings = Settings.GetDefaults();
-                    Settings.Recover(settingsFile, settings);
-                    Log.Write("Settings", "Recovery complete");
-                    await SetSettings(settings);
-                }
-            }
-            else
-            {
-                await ResetSettings();
-            }
-        }
-
-        public event EventHandler<LogMessage> Message;
-        public event EventHandler<DebugReportData> DeviceReport;
-        public event EventHandler<IEnumerable<TabletReference>> TabletsChanged;
-
-        public DesktopDriver Driver { private set; get; } = new DesktopDriver();
-        private Settings Settings { set; get; }
+        public Driver Driver { get; }
+        private Settings? Settings { set; get; }
         private Collection<LogMessage> LogMessages { set; get; } = new Collection<LogMessage>();
         private Collection<ITool> Tools { set; get; } = new Collection<ITool>();
+        private IUpdater Updater = DesktopInterop.Updater;
+#if !DEBUG
+        private readonly SleepDetectionThread SleepDetection;
+#endif
 
         private bool debugging;
 
         public Task WriteMessage(LogMessage message)
         {
-            Log.OnOutput(message);
+            Log.Write(message);
             return Task.CompletedTask;
         }
 
@@ -143,49 +136,41 @@ namespace OpenTabletDriver.Daemon
 
         public async Task<IEnumerable<TabletReference>> DetectTablets()
         {
-            var configDir = new DirectoryInfo(AppInfo.Current.ConfigurationDirectory);
-            if (configDir.Exists)
-            {
-                Driver.Detect();
+            Driver.Detect();
 
-                foreach (var tablet in Driver.Devices)
+            foreach (var tablet in Driver.InputDevices)
+            {
+                foreach (var dev in tablet.InputDevices)
                 {
-                    foreach (var dev in tablet.InputDevices)
-                    {
-                        dev.RawReport += (_, report) => PostDebugReport(tablet, report);
-                        dev.RawClone = debugging;
-                    }
+                    dev.RawReport += (_, report) => PostDebugReport(tablet, report);
+                    dev.RawClone = debugging;
                 }
+            }
 
-                return await GetTablets();
-            }
-            else
-            {
-                Log.Write("Detect", $"The configuration directory '{configDir.FullName}' does not exist.", LogLevel.Error);
-            }
-            Log.Write("Detect", "No tablet found.");
-            return null;
+            return await GetTablets();
         }
 
-        public Task SetSettings(Settings settings)
+        public Task SetSettings(Settings? settings)
         {
             // Dispose filters that implement IDisposable interface
-            foreach (var obj in Driver.Devices?.SelectMany(d => d.OutputMode?.Elements ?? (IEnumerable<object>)Array.Empty<object>()))
+            foreach (var obj in Driver.InputDevices.SelectMany(d => d.OutputMode?.Elements ?? (IEnumerable<object>)Array.Empty<object>()))
                 if (obj is IDisposable disposable)
                     disposable.Dispose();
 
             Settings = settings ??= Settings.GetDefaults();
 
-            foreach (var dev in Driver.Devices)
+            foreach (InputDeviceTree? dev in Driver.InputDevices)
             {
+                var tabletReference = dev.CreateReference();
                 string group = dev.Properties.Name;
                 var profile = Settings.Profiles[dev];
 
-                var pluginRef = profile.OutputMode?.GetPluginReference() ?? AppInfo.PluginManager.GetPluginReference(typeof(AbsoluteMode));
-                dev.OutputMode = pluginRef.Construct<IOutputMode>();
+                profile.BindingSettings.MatchSpecifications(dev.Properties.Specifications);
+
+                dev.OutputMode = profile.OutputMode.Construct<IOutputMode>(tabletReference);
 
                 if (dev.OutputMode != null)
-                    Log.Write(group, $"Output mode: {pluginRef.Name ?? pluginRef.Path}");
+                    Log.Write(group, $"Output mode: {profile.OutputMode.Name}");
 
                 if (dev.OutputMode is AbsoluteOutputMode absoluteMode)
                     SetAbsoluteModeSettings(dev, absoluteMode, profile.AbsoluteModeSettings);
@@ -195,8 +180,8 @@ namespace OpenTabletDriver.Daemon
 
                 if (dev.OutputMode is IOutputMode outputMode)
                 {
-                    SetOutputModeSettings(dev, outputMode, profile);
-                    SetBindingHandlerSettings(dev, outputMode, profile.BindingSettings);
+                    SetOutputModeSettings(dev, outputMode, profile, tabletReference);
+                    SetBindingHandlerSettings(dev, outputMode, profile.BindingSettings, tabletReference);
                 }
             }
 
@@ -212,19 +197,57 @@ namespace OpenTabletDriver.Daemon
             await SetSettings(Settings.GetDefaults());
         }
 
-        private void SetOutputModeSettings(InputDeviceTree dev, IOutputMode outputMode, Profile profile)
+        private async void LoadUserSettings()
+        {
+            AppInfo.PluginManager.Clean();
+            await LoadPlugins();
+            await DetectTablets();
+
+            var appdataDir = new DirectoryInfo(AppInfo.Current.AppDataDirectory);
+            if (!appdataDir.Exists)
+            {
+                appdataDir.Create();
+                Log.Write("Settings", $"Created OpenTabletDriver application data directory: {appdataDir.FullName}");
+            }
+
+            var settingsFile = new FileInfo(AppInfo.Current.SettingsFile);
+
+            if (settingsFile.Exists)
+            {
+                SettingsMigrator.Migrate(AppInfo.Current);
+                var settings = Settings.Deserialize(settingsFile);
+                if (settings != null)
+                {
+                    await SetSettings(settings);
+                }
+                else
+                {
+                    Log.Write("Settings", "Invalid settings detected. Attempting recovery.", LogLevel.Error);
+                    settings = Settings.GetDefaults();
+                    Settings.Recover(settingsFile, settings);
+                    Log.Write("Settings", "Recovery complete");
+                    await SetSettings(settings);
+                }
+            }
+            else
+            {
+                await ResetSettings();
+            }
+        }
+
+        private void SetOutputModeSettings(InputDeviceTree dev, IOutputMode outputMode, Profile profile, TabletReference tabletReference)
         {
             string group = dev.Properties.Name;
             outputMode.Tablet = dev;
 
             var elements = from store in profile.Filters
-                where store.Enable == true
-                let filter = store.Construct<IPositionedPipelineElement<IDeviceReport>>()
-                where filter != null
-                select filter;
+                           where store.Enable == true
+                           let filter = store.Construct<IPositionedPipelineElement<IDeviceReport>>(tabletReference)
+                           where filter != null
+                           select filter;
             outputMode.Elements = elements.ToList();
 
-            if (outputMode.Elements != null && outputMode.Elements.Count() > 0)
+            if (outputMode.Elements != null && outputMode.Elements.Count > 0)
                 Log.Write(group, $"Filters: {string.Join(", ", outputMode.Elements)}");
         }
 
@@ -259,60 +282,91 @@ namespace OpenTabletDriver.Daemon
             Log.Write(group, $"Reset time: {relativeMode.ResetTime}");
         }
 
-        private void SetBindingHandlerSettings(InputDeviceTree dev, IOutputMode outputMode, BindingSettings settings)
+        private void SetBindingHandlerSettings(InputDeviceTree dev, IOutputMode outputMode, BindingSettings settings, TabletReference tabletReference)
         {
             string group = dev.Properties.Name;
             var bindingHandler = new BindingHandler(outputMode);
 
             var bindingServiceProvider = new ServiceManager();
-            object pointer = outputMode switch
+            object? pointer = outputMode switch
             {
                 AbsoluteOutputMode absoluteOutputMode => absoluteOutputMode.Pointer,
                 RelativeOutputMode relativeOutputMode => relativeOutputMode.Pointer,
                 _ => null
             };
 
-            if (pointer is IVirtualMouse virtualMouse)
-                bindingServiceProvider.AddService<IVirtualMouse>(() => virtualMouse);
+            if (pointer is IMouseButtonHandler mouseButtonHandler)
+                bindingServiceProvider.AddService(() => mouseButtonHandler);
 
-            var tipbinding = bindingHandler.TipBinding = settings.TipButton?.Construct<IBinding>();
-            bindingServiceProvider.Inject(tipbinding);
-            bindingHandler.TipActivationPressure = settings.TipActivationPressure;
-            Log.Write(group, $"Tip Binding: [{bindingHandler.TipBinding}]@{bindingHandler.TipActivationPressure}%");
-
-            var eraserBinding = bindingHandler.EraserBinding = settings.EraserButton?.Construct<IBinding>();
-            bindingServiceProvider.Inject(eraserBinding);
-            bindingHandler.EraserActivationPressure = settings.EraserActivationPressure;
-            Log.Write(group, $"Eraser Binding: [{bindingHandler.EraserBinding}]@{bindingHandler.EraserActivationPressure}%");
-
-            if (settings.PenButtons != null)
+            var tip = bindingHandler.Tip = new ThresholdBindingState
             {
-                for (int index = 0; index < settings.PenButtons.Count; index++)
-                {
-                    var bind = settings.PenButtons[index]?.Construct<IBinding>();
-                    if (!bindingHandler.PenButtonBindings.TryAdd(index, bind))
-                    {
-                        bindingHandler.PenButtonBindings[index] = bind;
-                        bindingServiceProvider.Inject(bind);
-                    }
-                }
+                Binding = settings.TipButton?.Construct<IBinding>(bindingServiceProvider, tabletReference),
 
-                Log.Write(group, $"Pen Bindings: " + string.Join(", ", bindingHandler.PenButtonBindings));
+                ActivationThreshold = settings.TipActivationThreshold
+            };
+
+            if (tip.Binding != null)
+            {
+                Log.Write(group, $"Tip Binding: [{tip.Binding}]@{tip.ActivationThreshold}%");
             }
 
-            if (settings.AuxButtons != null)
+            var eraser = bindingHandler.Eraser = new ThresholdBindingState
             {
-                for (int index = 0; index < settings.AuxButtons.Count; index++)
-                {
-                    var bind = settings.AuxButtons[index]?.Construct<IBinding>();
-                    if (!bindingHandler.AuxButtonBindings.TryAdd(index, bind))
-                    {
-                        bindingHandler.AuxButtonBindings[index] = bind;
-                        bindingServiceProvider.Inject(bind);
-                    }
-                }
+                Binding = settings.EraserButton?.Construct<IBinding>(bindingServiceProvider, tabletReference),
+                ActivationThreshold = settings.EraserActivationThreshold
+            };
 
-                Log.Write(group, $"Express Key Bindings: " + string.Join(", ", bindingHandler.AuxButtonBindings));
+            if (eraser.Binding != null)
+            {
+                Log.Write(group, $"Eraser Binding: [{eraser.Binding}]@{eraser.ActivationThreshold}%");
+            }
+
+            if (settings.PenButtons != null && settings.PenButtons.Any(b => b?.Path != null))
+            {
+                SetBindingHandlerCollectionSettings(bindingServiceProvider, settings.PenButtons, bindingHandler.PenButtons, tabletReference);
+                Log.Write(group, $"Pen Bindings: " + string.Join(", ", bindingHandler.PenButtons.Select(b => b.Value?.Binding)));
+            }
+
+            if (settings.AuxButtons != null && settings.AuxButtons.Any(b => b?.Path != null))
+            {
+                SetBindingHandlerCollectionSettings(bindingServiceProvider, settings.AuxButtons, bindingHandler.AuxButtons, tabletReference);
+                Log.Write(group, $"Express Key Bindings: " + string.Join(", ", bindingHandler.AuxButtons.Select(b => b.Value?.Binding)));
+            }
+
+            if (settings.MouseButtons != null && settings.MouseButtons.Any(b => b?.Path != null))
+            {
+                SetBindingHandlerCollectionSettings(bindingServiceProvider, settings.MouseButtons, bindingHandler.MouseButtons, tabletReference);
+                Log.Write(group, $"Mouse Button Bindings: [" + string.Join("], [", bindingHandler.MouseButtons.Select(b => b.Value?.Binding)) + "]");
+            }
+
+            var scrollUp = bindingHandler.MouseScrollUp = new BindingState
+            {
+                Binding = settings.MouseScrollUp?.Construct<IBinding>(bindingServiceProvider, tabletReference)
+            };
+
+            var scrollDown = bindingHandler.MouseScrollDown = new BindingState
+            {
+                Binding = settings.MouseScrollDown?.Construct<IBinding>(bindingServiceProvider, tabletReference)
+            };
+
+            if (scrollUp.Binding != null || scrollDown.Binding != null)
+            {
+                Log.Write(group, $"Mouse Scroll: Up: [{scrollUp?.Binding}] Down: [{scrollDown?.Binding}]");
+            }
+        }
+
+        private void SetBindingHandlerCollectionSettings(IServiceManager serviceManager, PluginSettingStoreCollection collection, Dictionary<int, BindingState?> targetDict, TabletReference tabletReference)
+        {
+            for (int index = 0; index < collection.Count; index++)
+            {
+                var binding = collection[index]?.Construct<IBinding>(serviceManager, tabletReference);
+                var state = binding == null ? null : new BindingState
+                {
+                    Binding = binding
+                };
+
+                if (!targetDict.TryAdd(index, state))
+                    targetDict[index] = state;
             }
         }
 
@@ -322,23 +376,31 @@ namespace OpenTabletDriver.Daemon
                 runningTool.Dispose();
             Tools.Clear();
 
-            foreach (PluginSettingStore store in Settings.Tools)
+            if (Settings != null)
             {
-                if (store.Enable == false)
-                    continue;
+                foreach (PluginSettingStore store in Settings.Tools)
+                {
+                    if (store.Enable == false)
+                        continue;
 
-                var tool = store.Construct<ITool>();
+                    var tool = store.Construct<ITool>();
 
-                if (tool?.Initialize() ?? false)
-                    Tools.Add(tool);
-                else
-                    Log.Write("Tool", $"Failed to initialize {store.GetPluginReference().Name} tool.", LogLevel.Error);
+                    if (tool?.Initialize() ?? false)
+                        Tools.Add(tool);
+                    else
+                        Log.Write("Tool", $"Failed to initialize {store.Name} tool.", LogLevel.Error);
+                }
             }
         }
 
-        public Task<Settings> GetSettings()
+        public Task<Settings?> GetSettings()
         {
             return Task.FromResult(Settings);
+        }
+
+        public Task<IEnumerable<SerializedDeviceEndpoint>> GetDevices()
+        {
+            return Task.FromResult(Driver.CompositeDeviceHub.GetDevices().Select(d => new SerializedDeviceEndpoint(d)));
         }
 
         public Task<AppInfo> GetApplicationInfo()
@@ -349,7 +411,7 @@ namespace OpenTabletDriver.Daemon
         public Task SetTabletDebug(bool enabled)
         {
             debugging = enabled;
-            foreach (var dev in Driver.Devices.SelectMany(d => d.InputDevices))
+            foreach (var dev in Driver.InputDevices.SelectMany(d => d.InputDevices))
                 dev.RawClone = debugging;
 
             Log.Debug("Tablet", $"Tablet debugging is {(debugging ? "enabled" : "disabled")}");
@@ -359,23 +421,37 @@ namespace OpenTabletDriver.Daemon
 
         public Task<string> RequestDeviceString(int vid, int pid, int index)
         {
-            var tablet = DeviceList.Local.GetHidDevices(vendorID: vid, productID: pid).FirstOrDefault();
+            var tablet = Driver.CompositeDeviceHub.GetDevices().Where(d => d.VendorID == vid && d.ProductID == pid).FirstOrDefault();
             if (tablet == null)
                 throw new IOException("Device not found");
 
-            return Task.FromResult(tablet.GetDeviceString(index));
+            return Task.FromResult(tablet.GetDeviceString((byte)index));
         }
 
         public Task<IEnumerable<LogMessage>> GetCurrentLog()
         {
-            IEnumerable<LogMessage> messages = LogMessages;
-            return Task.FromResult(messages);
+            return Task.FromResult((IEnumerable<LogMessage>)LogMessages);
         }
 
         private void PostDebugReport(TabletReference tablet, IDeviceReport report)
         {
             if (report != null && tablet != null)
                 DeviceReport?.Invoke(this, new DebugReportData(tablet, report));
+        }
+
+        public Task<bool> HasUpdate()
+        {
+            return Updater?.CheckForUpdates() ?? Task.FromResult(false);
+        }
+
+        public async Task<Release> GetUpdateInfo()
+        {
+            return await Updater.GetRelease()!;
+        }
+
+        public Task InstallUpdate()
+        {
+            return Updater?.InstallUpdate() ?? Task.CompletedTask;
         }
     }
 }

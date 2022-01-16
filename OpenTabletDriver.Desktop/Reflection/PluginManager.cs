@@ -1,12 +1,13 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Reflection;
-using System.Runtime.Loader;
 using OpenTabletDriver.Plugin;
 using OpenTabletDriver.Plugin.Attributes;
 using OpenTabletDriver.Plugin.DependencyInjection;
+using OpenTabletDriver.Plugin.Logging;
 
 namespace OpenTabletDriver.Desktop.Reflection
 {
@@ -14,13 +15,23 @@ namespace OpenTabletDriver.Desktop.Reflection
     {
         public PluginManager()
         {
-            var internalTypes = from asm in AssemblyLoadContext.Default.Assemblies
-                where IsLoadable(asm)
-                from type in asm.DefinedTypes
-                where type.IsPublic && !(type.IsInterface || type.IsAbstract)
-                where IsPluginType(type)
-                where IsPlatformSupported(type)
-                select type;
+            var assemblies = new[]
+            {
+                Assembly.Load("OpenTabletDriver.Desktop"),
+                Assembly.Load("OpenTabletDriver.Configurations"),
+                Assembly.Load("OpenTabletDriver.Plugin")
+            };
+
+            libTypes = (from type in typeof(IDriver).Assembly.GetExportedTypes()
+                        where type.IsAbstract || type.IsInterface
+                        select type).ToArray();
+
+            var internalTypes = from asm in assemblies
+                                from type in asm.DefinedTypes
+                                where type.IsPublic && !(type.IsInterface || type.IsAbstract)
+                                where IsPluginType(type)
+                                where IsPlatformSupported(type)
+                                select type;
 
             pluginTypes = new ConcurrentBag<TypeInfo>(internalTypes);
         }
@@ -28,14 +39,7 @@ namespace OpenTabletDriver.Desktop.Reflection
         public IReadOnlyCollection<TypeInfo> PluginTypes => pluginTypes;
         protected ConcurrentBag<TypeInfo> pluginTypes;
 
-        protected readonly static IEnumerable<Type> libTypes =
-            from type in Assembly.GetAssembly(typeof(IDriver)).GetExportedTypes()
-                where type.IsAbstract || type.IsInterface
-                select type;
-
-        public virtual PluginReference GetPluginReference(string path) => new PluginReference(this, path);
-        public virtual PluginReference GetPluginReference(Type type) => GetPluginReference(type.FullName);
-        public virtual PluginReference GetPluginReference(object obj) => GetPluginReference(obj.GetType());
+        protected readonly Type[] libTypes;
 
         public virtual T ConstructObject<T>(string name, object[] args = null) where T : class
         {
@@ -47,17 +51,17 @@ namespace OpenTabletDriver.Desktop.Reflection
                     if (PluginTypes.FirstOrDefault(t => t.FullName == name) is TypeInfo type)
                     {
                         var matchingConstructors = from ctor in type.GetConstructors()
-                            let parameters = ctor.GetParameters()
-                            where parameters.Length == args.Length
-                            where IsValidParameterFor(args, parameters)
-                            select ctor;
+                                                   let parameters = ctor.GetParameters()
+                                                   where parameters.Length == args.Length
+                                                   where IsValidParameterFor(args, parameters)
+                                                   select ctor;
 
                         if (matchingConstructors.FirstOrDefault() is ConstructorInfo constructor)
                         {
                             T obj = (T)constructor.Invoke(args) ?? null;
 
                             if (obj != null)
-                                Inject(obj, type);
+                                Inject(this, obj, type);
                             return obj;
                         }
                         else
@@ -83,10 +87,56 @@ namespace OpenTabletDriver.Desktop.Reflection
         public virtual IReadOnlyCollection<TypeInfo> GetChildTypes<T>()
         {
             var children = from type in PluginTypes
-                where typeof(T).IsAssignableFrom(type)
-                select type;
+                           where typeof(T).IsAssignableFrom(type)
+                           select type;
 
             return children.ToArray();
+        }
+
+        public virtual string GetFriendlyName(string path)
+        {
+            if (AppInfo.PluginManager.PluginTypes.FirstOrDefault(t => t.FullName == path) is TypeInfo plugin)
+            {
+                var attrs = plugin.GetCustomAttributes(true);
+                var nameattr = attrs.FirstOrDefault(t => t.GetType() == typeof(PluginNameAttribute));
+                if (nameattr is PluginNameAttribute attr)
+                    return attr.Name;
+            }
+            return null;
+        }
+
+        public static void Inject(IServiceProvider serviceProvider, object obj)
+        {
+            if (obj != null)
+                Inject(serviceProvider, obj, obj.GetType());
+        }
+
+        public static void Inject(IServiceProvider serviceProvider, object obj, Type type)
+        {
+            if (obj == null)
+                return;
+
+            var resolvedProperties = from property in type.GetProperties()
+                                     where property.GetCustomAttribute<ResolvedAttribute>() is ResolvedAttribute
+                                     select property;
+
+            foreach (var property in resolvedProperties)
+            {
+                var service = serviceProvider.GetService(property.PropertyType);
+                if (service != null)
+                    property.SetValue(obj, service);
+            }
+
+            var resolvedFields = from field in type.GetFields()
+                                 where field.GetCustomAttribute<ResolvedAttribute>() is ResolvedAttribute
+                                 select field;
+
+            foreach (var field in resolvedFields)
+            {
+                var service = serviceProvider.GetService(field.FieldType);
+                if (service != null)
+                    field.SetValue(obj, service);
+            }
         }
 
         protected virtual bool IsValidParameterFor(object[] args, ParameterInfo[] parameters)
@@ -126,10 +176,18 @@ namespace OpenTabletDriver.Desktop.Reflection
                 _ = asm.DefinedTypes;
                 return true;
             }
-            catch
+            catch (Exception ex)
             {
                 var asmName = asm.GetName();
-                Log.Write("Plugin", $"Plugin '{asmName.Name}, Version={asmName.Version}' can't be loaded and is likely out of date.", LogLevel.Warning);
+                var hResultHex = ex.HResult.ToString("X");
+                var message = new LogMessage
+                {
+                    Group = "Plugin",
+                    Level = LogLevel.Warning,
+                    Message = $"Plugin '{asmName.Name}, Version={asmName.Version}' can't be loaded and is likely out of date. (HResult: 0x{hResultHex})",
+                    StackTrace = ex.Message + Environment.NewLine + ex.StackTrace
+                };
+                Log.Write(message);
                 return false;
             }
         }

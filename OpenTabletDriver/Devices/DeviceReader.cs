@@ -1,7 +1,6 @@
 ﻿using System;
 using System.IO;
 using System.Threading;
-using HidSharp;
 using OpenTabletDriver.Plugin;
 using OpenTabletDriver.Plugin.Devices;
 using OpenTabletDriver.Plugin.Tablet;
@@ -39,7 +38,7 @@ namespace OpenTabletDriver.Devices
         /// The <see cref="IReportParser{T}"/> in which the device reports will be parsed with.
         /// </summary>
         public IReportParser<T> Parser { private set; get; }
-        
+
         /// <summary>
         /// Whether or not to make an extra cloned report with data left unmodified.
         /// </summary>
@@ -95,7 +94,7 @@ namespace OpenTabletDriver.Devices
         {
             if (!initialized)
                 initialized = Initialize();
-            
+
             if (initialized)
                 workerThread.Start();
         }
@@ -110,7 +109,7 @@ namespace OpenTabletDriver.Devices
                     var data = ReportStream.Read();
                     if (Parser.Parse(data) is T report)
                         OnReport(report);
-                    
+
                     // We create a clone of the report to avoid data being modified on the tablet debugger.
                     if (RawClone && RawReport != null && Parser.Parse(data) is T debugReport)
                         OnRawReport(debugReport);

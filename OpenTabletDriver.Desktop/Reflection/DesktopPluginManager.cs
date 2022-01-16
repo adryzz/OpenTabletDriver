@@ -29,6 +29,9 @@ namespace OpenTabletDriver.Desktop.Reflection
             PluginDirectory = pluginDirectory;
             TrashDirectory = trashDirectory;
             TemporaryDirectory = tempDirectory;
+
+            if (!PluginDirectory.Exists)
+                PluginDirectory.Create();
         }
 
         public DirectoryInfo PluginDirectory { get; }
@@ -98,17 +101,17 @@ namespace OpenTabletDriver.Desktop.Reflection
             }
             else
             {
-                Log.Write("Plugin", $"Attempted to load the plugin {directory.Name} when it is already loaded.", LogLevel.Warning);
+                Log.Write("Plugin", $"Attempted to load the plugin {directory.Name} when it is already loaded.", LogLevel.Debug);
             }
         }
 
         protected void ImportTypes(PluginContext context)
         {
             var types = from asm in context.Assemblies
-                where IsLoadable(asm)
-                from type in asm.GetExportedTypes()
-                where IsPluginType(type)
-                select type;
+                        where IsLoadable(asm)
+                        from type in asm.GetExportedTypes()
+                        where IsPluginType(type)
+                        select type;
 
             types.AsParallel().ForAll(type =>
             {
@@ -166,7 +169,7 @@ namespace OpenTabletDriver.Desktop.Reflection
 
             if (!TemporaryDirectory.GetFileSystemInfos().Any())
                 Directory.Delete(TemporaryDirectory.FullName, true);
-            
+
             if (result)
                 LoadPlugin(pluginDir);
             return result;

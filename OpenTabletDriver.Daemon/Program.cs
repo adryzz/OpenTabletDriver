@@ -4,9 +4,11 @@ using System.CommandLine.Invocation;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.Extensions.DependencyInjection;
 using OpenTabletDriver.Desktop;
 using OpenTabletDriver.Desktop.RPC;
 using OpenTabletDriver.Plugin;
+using OpenTabletDriver.Plugin.Components;
 
 namespace OpenTabletDriver.Daemon
 {
@@ -23,7 +25,7 @@ namespace OpenTabletDriver.Daemon
                     return;
                 }
 
-                AppDomain.CurrentDomain.UnhandledException += (sender, e) => 
+                AppDomain.CurrentDomain.UnhandledException += (sender, e) =>
                 {
                     var exception = (Exception)e.ExceptionObject;
                     File.WriteAllLines(Path.Join(AppInfo.Current.AppDataDirectory, "daemon.log"),
@@ -50,7 +52,7 @@ namespace OpenTabletDriver.Daemon
                         Argument = new Argument<DirectoryInfo> ("config")
                     }
                 };
-                rootCommand.Handler = CommandHandler.Create<DirectoryInfo, DirectoryInfo>((appdata, config) => 
+                rootCommand.Handler = CommandHandler.Create<DirectoryInfo, DirectoryInfo>((appdata, config) =>
                 {
                     if (!string.IsNullOrWhiteSpace(appdata?.FullName))
                         AppInfo.Current.AppDataDirectory = appdata.FullName;
@@ -60,10 +62,23 @@ namespace OpenTabletDriver.Daemon
                 rootCommand.Invoke(args);
 
                 var host = new RpcHost<DriverDaemon>("OpenTabletDriver.Daemon");
-                host.ConnectionStateChanged += (sender, state) => 
+                host.ConnectionStateChanged += (sender, state) =>
                     Log.Write("IPC", $"{(state ? "Connected to" : "Disconnected from")} a client.", LogLevel.Debug);
-                await host.Main();
+
+                await host.Run(BuildDaemon());
             }
+        }
+
+        static DriverDaemon BuildDaemon()
+        {
+            return new DriverDaemon(new DriverBuilder()
+                .ConfigureServices(serviceCollection =>
+                {
+                    serviceCollection.AddSingleton<IDeviceConfigurationProvider, DesktopDeviceConfigurationProvider>();
+                    serviceCollection.AddSingleton<IReportParserProvider, DesktopReportParserProvider>();
+                })
+                .Build<Driver>(out _)
+            );
         }
     }
 }

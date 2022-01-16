@@ -1,5 +1,4 @@
-﻿using System.Linq;
-using System.Numerics;
+﻿using System.Numerics;
 using OpenTabletDriver.Plugin.Attributes;
 using OpenTabletDriver.Plugin.Platform.Pointer;
 using OpenTabletDriver.Plugin.Tablet;
@@ -115,10 +114,10 @@ namespace OpenTabletDriver.Plugin.Output
         }
 
         /// <summary>
-        /// Transposes, transforms, and performs all absolute positioning calculations to a <see cref="ITabletReport"/>.
+        /// Transposes, transforms, and performs all absolute positioning calculations to a <see cref="IAbsolutePositionReport"/>.
         /// </summary>
-        /// <param name="report">The <see cref="ITabletReport"/> in which to transform.</param>
-        protected override ITabletReport Transform(ITabletReport report)
+        /// <param name="report">The <see cref="IAbsolutePositionReport"/> in which to transform.</param>
+        protected override IAbsolutePositionReport Transform(IAbsolutePositionReport report)
         {
             // Apply transformation
             var pos = Vector2.Transform(report.Position, this.TransformationMatrix);
@@ -138,9 +137,27 @@ namespace OpenTabletDriver.Plugin.Output
 
         protected override void OnOutput(IDeviceReport report)
         {
-            var pen = Tablet.Properties.Specifications.Pen;
-            if (report is ITabletReport tabletReport && pen.ActiveReportID.IsInRange(tabletReport.ReportID))
-                Pointer.SetPosition(tabletReport.Position);
+            if (report is IEraserReport eraserReport && Pointer is IEraserHandler eraserHandler)
+                eraserHandler.SetEraser(eraserReport.Eraser);
+            if (report is IAbsolutePositionReport absReport)
+                Pointer.SetPosition(absReport.Position);
+            if (report is ITabletReport tabletReport && Pointer is IPressureHandler pressureHandler)
+                pressureHandler.SetPressure(tabletReport.Pressure / (float)Tablet.Properties.Specifications.Pen.MaxPressure);
+            if (report is ITiltReport tiltReport && Pointer is ITiltHandler tiltHandler)
+                tiltHandler.SetTilt(tiltReport.Tilt);
+            if (report is IProximityReport proximityReport)
+            {
+                if (Pointer is IProximityHandler proximityHandler)
+                    proximityHandler.SetProximity(proximityReport.NearProximity);
+                if (Pointer is IHoverDistanceHandler hoverDistanceHandler)
+                    hoverDistanceHandler.SetHoverDistance(proximityReport.HoverDistance);
+            }
+            if (Pointer is ISynchronousPointer synchronousPointer)
+            {
+                if (report is OutOfRangeReport)
+                    synchronousPointer.Reset();
+                synchronousPointer.Flush();
+            }
         }
     }
 }

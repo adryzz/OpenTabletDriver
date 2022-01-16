@@ -32,7 +32,7 @@ namespace OpenTabletDriver.Console
 
         static async Task ModifyProfile(string profileName, Action<Profile> func)
         {
-            await ModifySettings(async s => 
+            await ModifySettings(async s =>
             {
                 var profile = await GetProfile(profileName, s);
                 if (profile != null)
@@ -65,11 +65,10 @@ namespace OpenTabletDriver.Console
 
         static async Task ListTypes<T>()
         {
-            var types = from plugin in AppInfo.PluginManager.GetChildTypes<T>()
-                select AppInfo.PluginManager.GetPluginReference(plugin);
-            foreach (var type in types)
+            foreach (var type in AppInfo.PluginManager.GetChildTypes<T>())
             {
-                var output = string.IsNullOrWhiteSpace(type.Name) ? type.Path : $"{type.Path} [{type.Name}]";
+                var name = AppInfo.PluginManager.GetFriendlyName(type.FullName);
+                var output = string.IsNullOrWhiteSpace(name) ? type.FullName : $"{type.FullName} [{name}]";
                 await Out.WriteLineAsync(output);
             }
         }

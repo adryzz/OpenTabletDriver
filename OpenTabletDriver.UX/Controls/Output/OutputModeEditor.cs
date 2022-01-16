@@ -35,12 +35,12 @@ namespace OpenTabletDriver.UX.Controls.Output
 
             outputModeSelector.SelectedItemBinding.Convert<PluginSettingStore>(
                 c => PluginSettingStore.FromPath(c?.FullName),
-                v => v?.GetPluginReference().GetTypeReference()
+                v => v?.GetTypeInfo()
             ).Bind(ProfileBinding.Child(c => c.OutputMode));
 
             outputModeSelector.SelectedValueChanged += (sender, e) => UpdateOutputMode(Profile?.OutputMode);
 
-            App.Driver.AddConnectionHook(i => i.TabletsChanged += (sender, e) => UpdateTablet(e));
+            App.Driver.TabletsChanged += (sender, e) => UpdateTablet(e);
             UpdateTablet();
         }
 
@@ -109,8 +109,8 @@ namespace OpenTabletDriver.UX.Controls.Output
         public void SetDisplaySize(IEnumerable<IDisplay> displays)
         {
             var bgs = from disp in displays
-                where !(disp is IVirtualScreen)
-                select new RectangleF(disp.Position.X, disp.Position.Y, disp.Width, disp.Height);
+                      where !(disp is IVirtualScreen)
+                      select new RectangleF(disp.Position.X, disp.Position.Y, disp.Width, disp.Height);
             absoluteModeEditor.displayAreaEditor.AreaBounds = bgs;
         }
 
@@ -120,7 +120,7 @@ namespace OpenTabletDriver.UX.Controls.Output
             bool showRelative = false;
             if (store != null)
             {
-                var outputMode = store.GetPluginReference().GetTypeReference<IOutputMode>();
+                var outputMode = store.GetTypeInfo<IOutputMode>();
                 showAbsolute = outputMode.IsSubclassOf(typeof(AbsoluteOutputMode));
                 showRelative = outputMode.IsSubclassOf(typeof(RelativeOutputMode));
             }

@@ -73,7 +73,7 @@ namespace OpenTabletDriver.Plugin.Output
                 sensitivity.Y * ((digitizer?.Height / digitizer?.MaxY) ?? 0.01f));
         }
 
-        protected override ITabletReport Transform(ITabletReport report)
+        protected override IAbsolutePositionReport Transform(IAbsolutePositionReport report)
         {
             var deltaTime = stopwatch.Restart();
 
@@ -94,9 +94,26 @@ namespace OpenTabletDriver.Plugin.Output
 
         protected override void OnOutput(IDeviceReport report)
         {
-            if (report is ITabletReport tabletReport && Tablet.Properties.Specifications.Pen.ActiveReportID.IsInRange(tabletReport.ReportID))
+            if (report is IEraserReport eraserReport && Pointer is IEraserHandler eraserHandler)
+                eraserHandler.SetEraser(eraserReport.Eraser);
+            if (report is IAbsolutePositionReport absReport)
+                Pointer.SetPosition(absReport.Position);
+            if (report is ITabletReport tabletReport && Pointer is IPressureHandler pressureHandler)
+                pressureHandler.SetPressure(tabletReport.Pressure / (float)Tablet.Properties.Specifications.Pen.MaxPressure);
+            if (report is ITiltReport tiltReport && Pointer is ITiltHandler tiltHandler)
+                tiltHandler.SetTilt(tiltReport.Tilt);
+            if (report is IProximityReport proximityReport)
             {
-                Pointer.Translate(tabletReport.Position);
+                if (Pointer is IProximityHandler proximityHandler)
+                    proximityHandler.SetProximity(proximityReport.NearProximity);
+                if (Pointer is IHoverDistanceHandler hoverDistanceHandler)
+                    hoverDistanceHandler.SetHoverDistance(proximityReport.HoverDistance);
+            }
+            if (Pointer is ISynchronousPointer synchronousPointer)
+            {
+                if (report is OutOfRangeReport)
+                    synchronousPointer.Reset();
+                synchronousPointer.Flush();
             }
         }
     }

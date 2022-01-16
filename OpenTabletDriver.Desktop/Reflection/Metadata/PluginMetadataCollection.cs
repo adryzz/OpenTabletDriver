@@ -67,8 +67,9 @@ namespace OpenTabletDriver.Desktop.Reflection.Metadata
                 string hash = CalculateSHA256(memStream);
                 string cacheDir = Path.Join(AppInfo.Current.CacheDirectory, $"{hash}-OpenTabletDriver-PluginMetadata");
 
-                if (!Directory.Exists(cacheDir))
-                    archive.ExtractContents(cacheDir);
+                if (Directory.Exists(cacheDir))
+                    Directory.Delete(cacheDir, true);
+                archive.ExtractContents(cacheDir);
 
                 var collection = EnumeratePluginMetadata(cacheDir);
                 var metadataCollection = new PluginMetadataCollection(collection);
@@ -79,7 +80,7 @@ namespace OpenTabletDriver.Desktop.Reflection.Metadata
 
         protected static string CalculateSHA256(Stream stream)
         {
-            using (var sha256 = SHA256Managed.Create())
+            using (var sha256 = SHA256.Create())
             {
                 var hashData = sha256.ComputeHash(stream);
                 stream.Position = 0;

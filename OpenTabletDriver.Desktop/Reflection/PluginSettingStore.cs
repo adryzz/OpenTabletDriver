@@ -4,15 +4,19 @@ using System.Linq;
 using System.Reflection;
 using Newtonsoft.Json;
 using OpenTabletDriver.Plugin.Attributes;
+using OpenTabletDriver.Plugin.DependencyInjection;
+using OpenTabletDriver.Plugin.Tablet;
 
 namespace OpenTabletDriver.Desktop.Reflection
 {
     public class PluginSettingStore
     {
+        private static readonly Type _tabletRefType = typeof(TabletReference);
+
         public PluginSettingStore(Type type, bool enable = true)
         {
-            Path = type.FullName;
-            Settings = GetSettingsForType(type);
+            Path = type?.FullName;
+            Settings = type != null ? GetSettingsForType(type) : new ObservableCollection<PluginSetting>();
             Enable = enable;
         }
 
@@ -38,18 +42,33 @@ namespace OpenTabletDriver.Desktop.Reflection
 
         public string Path { set; get; }
 
+        [JsonIgnore]
+        public string Name => AppInfo.PluginManager.GetFriendlyName(Path);
+
         public ObservableCollection<PluginSetting> Settings { set; get; }
 
         public bool Enable { set; get; }
 
-        public PluginReference GetPluginReference() => new StoredPluginReference(AppInfo.PluginManager, this);
+        public T Construct<T>(TabletReference tabletReference = null, bool trigger = true) where T : class
+        {
+            var obj = AppInfo.PluginManager.ConstructObject<T>(Path);
+            ApplySettings(obj);
+            if (trigger)
+                TriggerEventMethods(obj, tabletReference);
+            return obj;
+        }
 
-        public T Construct<T>() where T : class => this.GetPluginReference().Construct<T>();
-        public T Construct<T>(params object[] args) where T : class => this.GetPluginReference().Construct<T>(args);
+        public T Construct<T>(IServiceManager provider, TabletReference tabletReference = null) where T : class
+        {
+            var obj = Construct<T>(tabletReference, false);
+            PluginManager.Inject(provider, obj);
+            TriggerEventMethods(obj, tabletReference);
+            return obj;
+        }
 
         public static PluginSettingStore FromPath(string path)
         {
-            var pathType = AppInfo.PluginManager.GetPluginReference(path).GetTypeReference();
+            var pathType = AppInfo.PluginManager.PluginTypes.FirstOrDefault(t => t.FullName == path);
             return pathType != null ? new PluginSettingStore(pathType) : null;
         }
 
@@ -59,9 +78,9 @@ namespace OpenTabletDriver.Desktop.Reflection
                 return;
 
             var properties = from property in target.GetType().GetProperties()
-                let attrs = property.GetCustomAttributes(true)
-                where attrs.Any(attr => attr is PropertyAttribute)
-                select property;
+                             let attrs = property.GetCustomAttributes(true)
+                             where attrs.Any(attr => attr is PropertyAttribute)
+                             select property;
 
             foreach (var setting in Settings)
             {
@@ -78,8 +97,8 @@ namespace OpenTabletDriver.Desktop.Reflection
         private static ObservableCollection<PluginSetting> GetSettingsForType(Type targetType, object source = null)
         {
             var settings = from property in targetType.GetProperties()
-                where property.GetCustomAttribute<PropertyAttribute>() is PropertyAttribute
-                select new PluginSetting(property, source == null ? null : property.GetValue(source));
+                           where property.GetCustomAttribute<PropertyAttribute>() is PropertyAttribute
+                           select new PluginSetting(property, source == null ? null : property.GetValue(source));
             return new ObservableCollection<PluginSetting>(settings);
         }
 
@@ -118,10 +137,42 @@ namespace OpenTabletDriver.Desktop.Reflection
 
         public string GetHumanReadableString()
         {
-            var name = this.GetPluginReference().Name;
+            var name = Name;
             string settings = string.Join(", ", this.Settings.Select(s => $"({s.Property}: {s.Value})"));
             string suffix = Settings.Any() ? $": {settings}" : string.Empty;
             return name + suffix;
+        }
+
+        public TypeInfo GetTypeInfo()
+        {
+            return AppInfo.PluginManager.PluginTypes.FirstOrDefault(t => t.FullName == Path);
+        }
+
+        public TypeInfo GetTypeInfo<T>()
+        {
+            return AppInfo.PluginManager.GetChildTypes<T>().FirstOrDefault(t => t.FullName == Path);
+        }
+
+        private static void TriggerEventMethods(object obj, TabletReference tabletReference)
+        {
+            if (obj == null)
+                return;
+
+            var properties = from property in obj.GetType().GetProperties()
+                             let attr = property.GetCustomAttribute<TabletReferenceAttribute>()
+                             where attr != null && property.PropertyType == _tabletRefType
+                             select property;
+
+            foreach (var property in properties)
+                property.SetValue(obj, tabletReference);
+
+            var methods = from method in obj.GetType().GetMethods()
+                          let attr = method.GetCustomAttribute<OnDependencyLoadAttribute>()
+                          where attr != null
+                          select method;
+
+            foreach (var method in methods)
+                method.Invoke(obj, Array.Empty<object>());
         }
     }
 }
