@@ -1,0 +1,33 @@
+{
+    "Name": "Nintendo 3DS XL",
+    "Specifications": {
+      "Digitizer": {
+        "Width": 86.0,
+        "Height": 66.0,
+        "MaxX": 314.0,
+        "MaxY": 234.0
+      },
+      "Pen": {
+        "MaxPressure": 1,
+        "Buttons": {
+          "ButtonCount": 0
+        }
+      },
+      "AuxiliaryButtons": {
+        "ButtonCount": 0
+      },
+      "MouseButtons": null,
+      "Touch": null
+    },
+    "DigitizerIdentifiers": [
+      {
+        "VendorID": 0,
+        "ProductID": 0,
+        "InputReportLength": 4,
+        "OutputReportLength": null,
+        "ReportParser": "OpenTabletDriver.Configurations.Parsers.Nintendo.Nintendo3dsReportParser",
+        "FeatureInitReport": null
+      }
+    ],
+    "AuxilaryDeviceIdentifiers": []
+  }
