@@ -199,6 +199,9 @@ namespace OpenTabletDriver.UX
             var detectTablet = new Command { MenuText = "Detect tablet", Shortcut = Application.Instance.CommonModifier | Keys.D };
             detectTablet.Executed += async (sender, e) => await DetectTablet();
 
+            var connectLegacyTablet = new Command { MenuText = "Connect legacy tablet..." };
+            connectLegacyTablet.Executed += (sender, e) => App.Current.LegacyTabletConnectionWindow.Show();
+
             var showTabletDebugger = new Command { MenuText = "Tablet debugger..." };
             showTabletDebugger.Executed += (sender, e) => App.Current.DebuggerWindow.Show();
 
@@ -262,6 +265,7 @@ namespace OpenTabletDriver.UX
                         Items =
                         {
                             detectTablet,
+                            connectLegacyTablet,
                             showTabletDebugger,
                             deviceStringReader,
                             configurationEditor

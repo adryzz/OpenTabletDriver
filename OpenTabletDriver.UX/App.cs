@@ -109,6 +109,8 @@ namespace OpenTabletDriver.UX
         public WindowSingleton<DeviceStringReader> StringReaderWindow { get; } = new WindowSingleton<DeviceStringReader>();
         public WindowSingleton<UpdaterWindow> UpdaterWindow { get; } = new WindowSingleton<UpdaterWindow>();
 
+        public WindowSingleton<LegacyTabletConnectionWindow> LegacyTabletConnectionWindow { get; } = new WindowSingleton<LegacyTabletConnectionWindow>();
+
         public void AddNotificationHandler(string identifier, Action handler)
         {
             NotificationHandlers.Add(identifier, handler);
