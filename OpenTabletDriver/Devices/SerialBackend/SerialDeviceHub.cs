@@ -7,7 +7,7 @@ namespace OpenTabletDriver.Devices.SerialBackend
     [DeviceHub]
     public class SerialDeviceHub : ILegacyDeviceHub
     {
-        public SerialDevoceHub()
+        public SerialDeviceHub()
         {
         }
 
