@@ -26,7 +26,6 @@ namespace OpenTabletDriver.UX.Windows.Tablet
             Icon = App.Logo.WithSize(App.Logo.Size);
             ClientSize = new Size(300, 250);
             
-
             var connectButton = new Button
             {
                 Text = "Connect",
