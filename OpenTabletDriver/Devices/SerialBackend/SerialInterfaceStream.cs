@@ -36,12 +36,10 @@ namespace OpenTabletDriver.Devices.SerialBackend
 
         public unsafe void GetFeature(byte[] buffer)
         {
-
         }
 
         public void SetFeature(byte[] buffer)
         {
-
         }
 
         public void Dispose()

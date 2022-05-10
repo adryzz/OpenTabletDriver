@@ -32,7 +32,6 @@ namespace OpenTabletDriver.UX.Windows.Tablet
                 Text = "Connect",
             };
 
-
             /*connectButton.Click += async (_, _) => await Connect(devicePathText.Text,
                 (s) => deviceStringText.Text = s,
                 (e) => MessageBox.Show($"Error: {e.Message}", MessageBoxType.Error),
