@@ -18,7 +18,6 @@ namespace OpenTabletDriver.UX.Windows.Tablet
 {
     public class LegacyTabletConnectionWindow : DesktopForm
     {
-
         public LegacyTabletConnectionWindow()
             : base(Application.Instance.MainForm)
         {
