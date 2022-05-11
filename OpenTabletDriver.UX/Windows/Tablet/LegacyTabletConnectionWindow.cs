@@ -40,6 +40,8 @@ namespace OpenTabletDriver.UX.Windows.Tablet
 
             tablet = new DropDown<string>();
 
+            tablet.DataStore = (IEnumerable<object>)App.Driver.Instance.GetLegacyPorts();
+
             devicePathGroup = new Group("Device path", devicePathText, Orientation.Vertical, false);
 
             tabletGroup = new Group("Tablet", tablet, Orientation.Vertical, false);

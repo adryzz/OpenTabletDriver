@@ -6,5 +6,7 @@ namespace OpenTabletDriver.Plugin.Components
     public interface IDeviceHubsProvider
     {
         IEnumerable<IDeviceHub> DeviceHubs { get; }
+
+        IEnumerable<ILegacyDeviceHub> LegacyDeviceHubs { get; }
     }
 }

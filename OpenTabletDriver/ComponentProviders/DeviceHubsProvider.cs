@@ -19,8 +19,17 @@ namespace OpenTabletDriver.ComponentProviders
                     && (type.GetCustomAttribute<SupportedPlatformAttribute>()?.IsCurrentPlatform ?? true))
                 .Select(type => (IDeviceHub)ActivatorUtilities.CreateInstance(serviceProvider, type))
                 .ToArray();
+
+            LegacyDeviceHubs = Assembly.GetExecutingAssembly().DefinedTypes
+                .Where(type => type.IsAssignableTo(typeof(ILegacyDeviceHub))
+                    && type.GetCustomAttribute<DeviceHubAttribute>() != null
+                    && (type.GetCustomAttribute<SupportedPlatformAttribute>()?.IsCurrentPlatform ?? true))
+                .Select(type => (ILegacyDeviceHub)ActivatorUtilities.CreateInstance(serviceProvider, type))
+                .ToArray();
         }
 
         public IEnumerable<IDeviceHub> DeviceHubs { get; }
+
+        public IEnumerable<ILegacyDeviceHub> LegacyDeviceHubs { get; }
     }
 }

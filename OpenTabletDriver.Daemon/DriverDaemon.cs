@@ -136,6 +136,12 @@ namespace OpenTabletDriver.Daemon
             return Task.FromResult(Driver.Tablets);
         }
 
+        public Task<IEnumerable<string>> GetLegacyPorts()
+        {
+            return Task.FromResult(Driver.CompositeDeviceHub.LegacyPortNames);
+        }
+
+
         public async Task<IEnumerable<TabletReference>> DetectTablets()
         {
             Driver.Detect();

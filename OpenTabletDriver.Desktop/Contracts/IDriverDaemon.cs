@@ -28,6 +28,8 @@ namespace OpenTabletDriver.Desktop.Contracts
         Task<IEnumerable<TabletReference>> GetTablets();
         Task<IEnumerable<TabletReference>> DetectTablets();
 
+        Task<IEnumerable<string>> GetLegacyPorts();
+
         Task SetSettings(Settings settings);
         Task<Settings> GetSettings();
         Task ResetSettings();

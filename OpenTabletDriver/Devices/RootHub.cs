@@ -18,7 +18,15 @@ namespace OpenTabletDriver.Devices
         {
             internalHubs = hubsProvider.DeviceHubs.ToHashSet();
             hubs = new HashSet<IDeviceHub>(internalHubs);
+
+            internalLegacyHubs = hubsProvider.LegacyDeviceHubs.ToHashSet();
+            legacyHubs = new HashSet<ILegacyDeviceHub>(internalLegacyHubs);
             ForceEnumeration();
+
+            foreach (var hub in hubs)
+            {
+                HookDeviceNotification(hub);
+            }
 
             foreach (var hub in hubs)
             {
@@ -31,6 +39,10 @@ namespace OpenTabletDriver.Devices
         private readonly object syncObject = new();
         private readonly HashSet<IDeviceHub> internalHubs;
         private readonly HashSet<IDeviceHub> hubs;
+
+        private readonly HashSet<ILegacyDeviceHub> internalLegacyHubs;
+        private readonly HashSet<ILegacyDeviceHub> legacyHubs;
+
         private List<IDeviceEndpoint>? oldEndpoints;
         private readonly List<IDeviceEndpoint> endpoints = new();
         private long version;
@@ -40,6 +52,12 @@ namespace OpenTabletDriver.Devices
         public event EventHandler<DevicesChangedEventArgs>? DevicesChanged;
 
         public IEnumerable<IDeviceHub> DeviceHubs => hubs;
+
+        public IEnumerable<ILegacyDeviceHub> LegacyDeviceHubs => legacyHubs;
+
+        public IEnumerable<string> legacyPortNames;
+
+        public IEnumerable<string> LegacyPortNames => legacyPortNames;
 
         public static RootHub WithProvider(IServiceProvider provider)
         {
@@ -157,6 +175,7 @@ namespace OpenTabletDriver.Devices
         {
             endpoints.Clear();
             endpoints.AddRange(hubs.SelectMany(h => h.GetDevices()));
+            legacyPortNames = legacyHubs.Where(h => h.CanEnumeratePorts).SelectMany(h => h.EnumeratePorts()).ToList();
         }
 
         private RootHub RegisterServiceProvider(IServiceProvider serviceProvider)
