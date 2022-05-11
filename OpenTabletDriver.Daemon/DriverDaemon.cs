@@ -9,6 +9,7 @@ using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using System.Diagnostics;
+using System.Reflection;
 using Octokit;
 using OpenTabletDriver.Desktop;
 using OpenTabletDriver.Desktop.Binding;
@@ -23,6 +24,7 @@ using OpenTabletDriver.Desktop.Updater;
 using OpenTabletDriver.Devices;
 using OpenTabletDriver.Interop;
 using OpenTabletDriver.Plugin;
+using OpenTabletDriver.Plugin.Attributes;
 using OpenTabletDriver.Plugin.Devices;
 using OpenTabletDriver.Plugin.Logging;
 using OpenTabletDriver.Plugin.Output;
@@ -150,6 +152,7 @@ namespace OpenTabletDriver.Daemon
 
         public Task ConnectLegacyTablet(Uri port, TabletConfiguration tablet, bool save)
         {
+            Driver.ConnectLegacyDevice(port, tablet);
             return Task.CompletedTask;
         }
 

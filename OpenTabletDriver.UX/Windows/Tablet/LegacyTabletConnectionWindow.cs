@@ -29,7 +29,7 @@ namespace OpenTabletDriver.UX.Windows.Tablet
 
             tablet = new DropDown<TabletConfiguration>();
 
-            tablet.DataStore = App.Driver.Instance.GetSupportedTablets().Result.Where(x => x.Attributes.ContainsKey("isLegacy"));
+            tablet.DataStore = App.Driver.Instance.GetSupportedTablets().Result;//.Where(x => x.Attributes.ContainsKey("isLegacy"));
 
             devicePathText.DataStore = App.Driver.Instance.GetLegacyPorts().Result;
 

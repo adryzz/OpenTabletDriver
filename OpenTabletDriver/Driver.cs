@@ -1,16 +1,19 @@
+
+
+#nullable enable
+
 using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Reflection;
 using System.Text.RegularExpressions;
 using OpenTabletDriver.Interop;
 using OpenTabletDriver.Plugin;
+using OpenTabletDriver.Plugin.Attributes;
 using OpenTabletDriver.Plugin.Components;
 using OpenTabletDriver.Plugin.Devices;
 using OpenTabletDriver.Plugin.Tablet;
-
-#nullable enable
-
 namespace OpenTabletDriver
 {
     public class Driver : IDriver, IDisposable
@@ -206,6 +209,41 @@ namespace OpenTabletDriver
                     return true;
                 }
             }
+        }
+
+        public void ConnectLegacyDevice(Uri path, TabletConfiguration config)
+        {
+            ILegacyDeviceHub? selectedHub = null;
+            foreach (ILegacyDeviceHub hub in CompositeDeviceHub.LegacyDeviceHubs)
+            {
+                string? protocol = hub.GetType().GetCustomAttribute<LegacyDeviceHubAttribute>()?.Protocol;
+                if (protocol == null)
+                    continue;
+
+                if (path.Scheme == protocol)
+                {
+                    selectedHub = hub;
+                    break;
+                }
+            }
+
+            if (selectedHub == null || !selectedHub.TryGetDevice(path.AbsolutePath, out IDeviceEndpoint endpoint))
+            {
+                throw new ArgumentException();
+            }
+
+            var devices = new List<InputDevice>();
+            devices.Add(new InputDevice(this, endpoint, config, new DeviceIdentifier()));
+
+            InputDeviceTree tree = new InputDeviceTree(config, devices);
+
+            InputDevices.Add(tree);
+
+            tree.Disconnected += (sender, e) =>
+            {
+                InputDevices.Remove(tree);
+                TabletsChanged?.Invoke(this, Tablets);
+            };
         }
 
         public void Dispose()

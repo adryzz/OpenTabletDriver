@@ -27,5 +27,7 @@ namespace OpenTabletDriver.Plugin
         /// </summary>
         /// <param name="identifier">The identifier to retrieve the report parser path from.</param>
         IReportParser<IDeviceReport> GetReportParser(DeviceIdentifier identifier);
+
+        void ConnectLegacyDevice(Uri uri, TabletConfiguration config);
     }
 }
