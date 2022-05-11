@@ -4,6 +4,7 @@ using System.Threading.Tasks;
 using Octokit;
 using OpenTabletDriver.Desktop.Reflection.Metadata;
 using OpenTabletDriver.Desktop.RPC;
+using OpenTabletDriver.Devices;
 using OpenTabletDriver.Plugin.Devices;
 using OpenTabletDriver.Plugin.Logging;
 using OpenTabletDriver.Plugin.Tablet;
@@ -29,6 +30,8 @@ namespace OpenTabletDriver.Desktop.Contracts
         Task<IEnumerable<TabletReference>> DetectTablets();
 
         Task<IEnumerable<string>> GetLegacyPorts();
+
+        Task ConnectLegacyTablet(LegacyHubType type, string port, string tablet);
 
         Task SetSettings(Settings settings);
         Task<Settings> GetSettings();

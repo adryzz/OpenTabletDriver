@@ -1,4 +1,8 @@
-﻿using System;
+﻿
+
+#nullable enable
+
+using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.IO;
@@ -16,6 +20,7 @@ using OpenTabletDriver.Desktop.Reflection;
 using OpenTabletDriver.Desktop.Reflection.Metadata;
 using OpenTabletDriver.Desktop.RPC;
 using OpenTabletDriver.Desktop.Updater;
+using OpenTabletDriver.Devices;
 using OpenTabletDriver.Interop;
 using OpenTabletDriver.Plugin;
 using OpenTabletDriver.Plugin.Devices;
@@ -24,9 +29,6 @@ using OpenTabletDriver.Plugin.Output;
 using OpenTabletDriver.Plugin.Platform.Pointer;
 using OpenTabletDriver.Plugin.Tablet;
 using OpenTabletDriver.SystemDrivers;
-
-#nullable enable
-
 namespace OpenTabletDriver.Daemon
 {
     public class DriverDaemon : IDriverDaemon
@@ -141,6 +143,10 @@ namespace OpenTabletDriver.Daemon
             return Task.FromResult(Driver.CompositeDeviceHub.LegacyPortNames);
         }
 
+        public Task ConnectLegacyTablet(LegacyHubType type, string port, string tablet)
+        {
+            return Task.CompletedTask;
+        }
 
         public async Task<IEnumerable<TabletReference>> DetectTablets()
         {

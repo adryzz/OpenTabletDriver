@@ -1,18 +1,8 @@
-using System;
-using System.Collections.Generic;
-using System.ComponentModel;
-using System.IO;
-using System.Linq;
-using System.Text;
 using Eto.Drawing;
 using Eto.Forms;
-using OpenTabletDriver.Desktop;
-using OpenTabletDriver.Desktop.Contracts;
-using OpenTabletDriver.Desktop.RPC;
-using OpenTabletDriver.Plugin.Tablet;
-using OpenTabletDriver.Plugin.Timing;
+using Microsoft.VisualStudio.Threading;
+using OpenTabletDriver.Devices;
 using OpenTabletDriver.UX.Controls.Generic;
-using OpenTabletDriver.UX.Tools;
 
 namespace OpenTabletDriver.UX.Windows.Tablet
 {
@@ -23,9 +13,9 @@ namespace OpenTabletDriver.UX.Windows.Tablet
         {
             Title = "Connect legacy tablet...";
             Icon = App.Logo.WithSize(App.Logo.Size);
-            ClientSize = new Size(300, 250);
-            
-            var connectButton = new Button
+            ClientSize = new Size(300, 300);
+
+            connectButton = new Button
             {
                 Text = "Connect",
             };
@@ -40,12 +30,16 @@ namespace OpenTabletDriver.UX.Windows.Tablet
 
             tablet = new DropDown<string>();
 
-            tablet.DataStore = (IEnumerable<object>)App.Driver.Instance.GetLegacyPorts();
+            devicePathText.DataStore = App.Driver.Instance.GetLegacyPorts().Result;
 
             devicePathGroup = new Group("Device path", devicePathText, Orientation.Vertical, false);
 
             tabletGroup = new Group("Tablet", tablet, Orientation.Vertical, false);
-            
+
+            portType = new EnumDropDown<LegacyHubType>();
+
+            portTypeGroup = new Group("Port type", portType, Orientation.Vertical, false);
+
             reconnectBox = new CheckBox
             {
                 Text = "Remember tablet"
@@ -58,6 +52,7 @@ namespace OpenTabletDriver.UX.Windows.Tablet
                 HorizontalContentAlignment = HorizontalAlignment.Stretch,
                 Items =
                 {
+                    portTypeGroup,
                     devicePathGroup,
                     tabletGroup,
                     reconnectBox,
@@ -68,9 +63,12 @@ namespace OpenTabletDriver.UX.Windows.Tablet
 
         private readonly ComboBox devicePathText;
         private readonly CheckBox reconnectBox;
+        private readonly Button connectButton;
 
         private readonly DropDown<string> tablet;
 
-        private readonly Group devicePathGroup, tabletGroup;
+        private readonly EnumDropDown<LegacyHubType> portType;
+
+        private readonly Group devicePathGroup, tabletGroup, portTypeGroup;
     }
 }
