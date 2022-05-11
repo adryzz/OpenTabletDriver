@@ -143,7 +143,12 @@ namespace OpenTabletDriver.Daemon
             return Task.FromResult(Driver.CompositeDeviceHub.LegacyPortNames);
         }
 
-        public Task ConnectLegacyTablet(LegacyHubType type, string port, string tablet)
+        public Task<IEnumerable<TabletConfiguration>> GetSupportedTablets()
+        {
+            return Task.FromResult(Driver.TabletConfigurations);
+        }
+
+        public Task ConnectLegacyTablet(LegacyHubType type, string port, TabletConfiguration tablet, bool save)
         {
             return Task.CompletedTask;
         }

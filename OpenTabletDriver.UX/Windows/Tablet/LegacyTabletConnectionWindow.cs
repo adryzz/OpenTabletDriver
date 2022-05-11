@@ -2,6 +2,7 @@ using Eto.Drawing;
 using Eto.Forms;
 using Microsoft.VisualStudio.Threading;
 using OpenTabletDriver.Devices;
+using OpenTabletDriver.Plugin.Tablet;
 using OpenTabletDriver.UX.Controls.Generic;
 
 namespace OpenTabletDriver.UX.Windows.Tablet
@@ -20,15 +21,13 @@ namespace OpenTabletDriver.UX.Windows.Tablet
                 Text = "Connect",
             };
 
-            /*connectButton.Click += async (_, _) => await Connect(devicePathText.Text,
-                (s) => deviceStringText.Text = s,
-                (e) => MessageBox.Show($"Error: {e.Message}", MessageBoxType.Error),
-                () => MessageBox.Show(OperationTimedOut)
-            );*/
+            connectButton.Click += async (_, _) => await App.Driver.Instance.ConnectLegacyTablet(portType.SelectedValue, devicePathText.Text, tablet.SelectedItem, reconnectBox.Checked.Value);
 
             devicePathText = new ComboBox();
 
-            tablet = new DropDown<string>();
+            tablet = new DropDown<TabletConfiguration>();
+
+            tablet.DataStore = App.Driver.Instance.GetSupportedTablets().Result;
 
             devicePathText.DataStore = App.Driver.Instance.GetLegacyPorts().Result;
 
@@ -65,7 +64,7 @@ namespace OpenTabletDriver.UX.Windows.Tablet
         private readonly CheckBox reconnectBox;
         private readonly Button connectButton;
 
-        private readonly DropDown<string> tablet;
+        private readonly DropDown<TabletConfiguration> tablet;
 
         private readonly EnumDropDown<LegacyHubType> portType;
 

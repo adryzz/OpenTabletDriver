@@ -31,7 +31,9 @@ namespace OpenTabletDriver.Desktop.Contracts
 
         Task<IEnumerable<string>> GetLegacyPorts();
 
-        Task ConnectLegacyTablet(LegacyHubType type, string port, string tablet);
+        Task<IEnumerable<TabletConfiguration>> GetSupportedTablets();
+
+        Task ConnectLegacyTablet(LegacyHubType type, string port, TabletConfiguration tablet, bool save);
 
         Task SetSettings(Settings settings);
         Task<Settings> GetSettings();
