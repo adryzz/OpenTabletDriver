@@ -1,5 +1,3 @@
-
-
 #nullable enable
 
 using System;
@@ -231,9 +229,12 @@ namespace OpenTabletDriver
             {
                 throw new ArgumentException();
             }
-
             var devices = new List<InputDevice>();
-            devices.Add(new InputDevice(this, endpoint, config, new DeviceIdentifier()));
+
+            foreach (var id in config.DigitizerIdentifiers)
+            {
+                devices.Add(new InputDevice(this, endpoint, config, id));
+            }
 
             InputDeviceTree tree = new InputDeviceTree(config, devices);
 
