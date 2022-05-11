@@ -175,7 +175,7 @@ namespace OpenTabletDriver.Devices
         {
             endpoints.Clear();
             endpoints.AddRange(hubs.SelectMany(h => h.GetDevices()));
-            legacyPortNames = legacyHubs.Where(h => h.CanEnumeratePorts).SelectMany(h => h.EnumeratePorts()).ToList();
+            //legacyPortNames = legacyHubs.Where(h => h.CanEnumeratePorts).SelectMany(h => h.EnumeratePorts());
         }
 
         private RootHub RegisterServiceProvider(IServiceProvider serviceProvider)
