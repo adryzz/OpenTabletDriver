@@ -9,6 +9,6 @@ namespace OpenTabletDriver.Plugin.Devices
 
         public bool CanEnumeratePorts { get; }
 
-        public string[] EnumeratePorts();
+        public IEnumerable<Uri> EnumeratePorts();
     }
 }

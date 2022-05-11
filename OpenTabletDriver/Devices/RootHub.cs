@@ -55,9 +55,9 @@ namespace OpenTabletDriver.Devices
 
         public IEnumerable<ILegacyDeviceHub> LegacyDeviceHubs => legacyHubs;
 
-        public IEnumerable<string> legacyPortNames;
+        public IEnumerable<Uri> legacyPorts;
 
-        public IEnumerable<string> LegacyPortNames => legacyPortNames;
+        public IEnumerable<Uri> LegacyPorts => legacyPorts;
 
         public static RootHub WithProvider(IServiceProvider provider)
         {
@@ -175,7 +175,7 @@ namespace OpenTabletDriver.Devices
         {
             endpoints.Clear();
             endpoints.AddRange(hubs.SelectMany(h => h.GetDevices()));
-            legacyPortNames = legacyHubs.Where(h => h.CanEnumeratePorts).SelectMany(h => h.EnumeratePorts());
+            legacyPorts = legacyHubs.Where(h => h.CanEnumeratePorts).SelectMany(h => h.EnumeratePorts());
         }
 
         private RootHub RegisterServiceProvider(IServiceProvider serviceProvider)
