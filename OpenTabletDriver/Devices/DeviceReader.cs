@@ -134,6 +134,7 @@ namespace OpenTabletDriver.Devices
             finally
             {
                 Connected = false;
+                ReportStream?.Dispose();
             }
         }
 
