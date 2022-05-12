@@ -209,7 +209,7 @@ namespace OpenTabletDriver
             }
         }
 
-        public bool ConnectLegacyDevice(Uri path, TabletConfiguration config)
+        public object ConnectLegacyDevice(Uri path, TabletConfiguration config)
         {
             ILegacyDeviceHub? selectedHub = null;
             foreach (ILegacyDeviceHub hub in CompositeDeviceHub.LegacyDeviceHubs)
@@ -233,7 +233,7 @@ namespace OpenTabletDriver
 
             if (selectedHub == null || !selectedHub.TryGetDevice(actualPath, out IDeviceEndpoint endpoint))
             {
-                return false;
+                throw new ArgumentException();
             }
             var devices = new List<InputDevice>();
 
@@ -253,7 +253,7 @@ namespace OpenTabletDriver
             };
 
             TabletsChanged?.Invoke(this, Tablets);
-            return true;
+            return tree;
         }
 
         public void Dispose()
