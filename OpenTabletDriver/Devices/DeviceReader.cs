@@ -88,6 +88,10 @@ namespace OpenTabletDriver.Devices
                 Log.Exception(ex);
                 return false;
             }
+            finally
+            {
+                Connected = false;
+            }
         }
 
         protected virtual void Start()
