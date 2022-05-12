@@ -23,7 +23,14 @@ namespace OpenTabletDriver.UX.Windows.Tablet
                 Text = "Connect",
             };
 
-            connectButton.Click += async (_, _) => await App.Driver.Instance.ConnectLegacyTablet(new Uri(devicePathText.Text), tablet.SelectedItem, reconnectBox.Checked.Value);
+            connectButton.Click += async (_, _) =>
+            {
+                await App.Driver.Instance.ConnectLegacyTablet(new Uri(devicePathText.Text), tablet.SelectedItem,
+                    reconnectBox.Checked.Value);
+                Close();
+            };
+
+            App.Driver.Disconnected += (sender, args) => Close();
 
             devicePathText = new ComboBox();
 
