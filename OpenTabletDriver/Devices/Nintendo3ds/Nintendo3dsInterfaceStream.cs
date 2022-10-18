@@ -37,7 +37,7 @@ namespace OpenTabletDriver.Devices.Nintendo3ds
         {
             byte[] buf = new byte[reportSize];
             streamSocket.Receive(buf);
-            Console.WriteLine(BitConverter.ToString(buf).Replace("-",""));
+            //Console.WriteLine(BitConverter.ToString(buf).Replace("-",""));
             return buf;
         }
 
